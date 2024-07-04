@@ -1,0 +1,45 @@
+/* CUSTOMER ANALYSIS - DIAGEO AMERICAS vendor
+Ordered by New customers: tất cả nhứng đơn hàng được tạo ra trong tháng đầu tiên store đó phát sinh đơn hàng
+Ordered by Existing customer: những đơn còn lại*/
+
+WITH diageo_americas_store AS
+  (SELECT 
+    store_number
+    , store_name
+    , MIN(order_date) AS first_order_date
+    , DATE_TRUNC(MIN(order_date),MONTH) AS first_order_month
+  FROM `hale-mercury-428206-f7.iowa_data_sample.iowa_data_sample_clean` 
+  WHERE 
+    vendor_number = 260
+
+  GROUP BY 1,2
+  )
+  , diageo_americas_sales AS (
+  SELECT *
+  FROM `hale-mercury-428206-f7.iowa_data_sample.iowa_sample_clean` 
+  WHERE vendor_number = 260
+  )
+, sales_enrich AS (
+  SELECT *
+    , CASE
+      WHEN DATE_TRUNC(sales.order_date,MONTH) = store.first_order_month THEN 'Ordered by New Customer'
+      ELSE 'Ordered by Existing Customer'
+      END AS ordered_by_new_customer
+  FROM diageo_americas_sales AS sales
+  LEFT JOIN diageo_americas_store AS store
+    USING(store_number)
+  ORDER BY order_date, invoice_and_item_number
+  )
+SELECT 
+  DATE_TRUNC(order_date, MONTH) AS month
+  , SUM(order_amount) AS total_revenue
+  , SUM(CASE
+        WHEN ordered_by_new_customer = 'Ordered by New Customer' THEN order_amount
+        ELSE 0 END) AS revenue_by_new_customer
+  , SUM(CASE
+        WHEN ordered_by_new_customer = 'Ordered by New Customer' THEN order_amount
+        ELSE 0 END) / SUM(order_amount) AS percent_of_revenue_by_new_customer
+FROM sales_enrich
+GROUP BY 1
+ORDER BY 1
+

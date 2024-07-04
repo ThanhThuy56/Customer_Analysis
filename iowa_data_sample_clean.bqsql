@@ -1,0 +1,64 @@
+/* CLEAN DATA SAMPLE: rename columns, cast type, deduplicate, enrich data(add company_name)  */
+WITH rename_columns AS 
+  (SELECT invoice_and_item_number
+  , date AS order_date
+  , store_number
+  , store_name
+  , city AS store_city
+  , county AS store_county
+  , category AS category_number
+  , category_name
+  , vendor_number
+  , vendor_name
+  , item_number
+  , item_description
+  , state_bottle_retail AS wholesale_price_per_bottle
+  , bottles_sold AS sold_bottles
+  , sale_dollars AS order_amount
+  , volume_sold_liters
+  FROM `hale-mercury-428206-f7.iowa_data_sample.iowa_liquor_sales` 
+  )
+  , cast_type AS (
+    SELECT invoice_and_item_number
+      , order_date
+      , CAST(store_number AS INTEGER) AS store_number
+      , store_name
+      , store_city
+      , store_county
+      , CAST(REPLACE(category_number,".0","") AS INTEGER) AS category_number
+      , category_name
+      , CAST(REPLACE(vendor_number,".0","") AS INTEGER) AS vendor_number
+      , vendor_name
+      , CAST(item_number AS INTEGER) AS item_number
+      , item_description
+      , CAST(wholesale_price_per_bottle AS NUMERIC) AS wholesale_price_per_bottle
+      , sold_bottles
+      , CAST(order_amount AS NUMERIC) AS order_amount
+      , CAST(volume_sold_liters AS NUMERIC) AS volume_sold_liters
+    FROM rename_columns
+  )
+, dedup AS (
+    SELECT invoice_and_item_number
+      , order_date
+      , store_number
+      , FIRST_VALUE(store_name) OVER(PARTITION BY store_number ORDER BY order_date DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS store_name
+      , store_city
+      , store_county
+      , category_number
+      , FIRST_VALUE(category_name) OVER(PARTITION BY category_number ORDER BY order_date DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS category_name
+      , vendor_number
+      , FIRST_VALUE(vendor_name) OVER(PARTITION BY vendor_number ORDER BY order_date DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS vendor_name
+      , item_number
+      , FIRST_VALUE(item_description) OVER(PARTITION BY item_number ORDER BY order_date DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS item_description
+      , wholesale_price_per_bottle
+      , sold_bottles
+      , order_amount
+      , volume_sold_liters
+    FROM cast_type )
+SELECT *
+    , CASE
+        WHEN STRPOS(store_name, ' #') <> 0
+        THEN SPLIT(store_name, ' #')[0]
+        ELSE SPLIT(store_name, ' /')[0]
+        END AS company_name
+  FROM dedup
